@@ -1,18 +1,14 @@
-use std::sync::Arc;
-use std::thread::{self, JoinHandle};
-use noise::{Perlin, Seedable};
-use sfml::graphics::{Image, RenderStates, RenderTarget, Sprite, Texture, Transformable};
-use sfml::system::Vector2f;
-use terrain::COLORS;
-use tile::{Tile, TileData};
+use noise::{NoiseModule, Perlin, Seedable};
+use terrain::Terrain;
+use VIDEO_MODE;
 
-pub const TILES_ROW: usize = 10;
-pub const TILE_SIZE: f32 = 64.;
-pub const TILE_SIZE_U32: u32 = TILE_SIZE as u32;
+pub const TERRAIN_SIZE: (usize, usize) = (VIDEO_MODE.width as usize, VIDEO_MODE.height as usize);
+const TERRAIN_LEN: usize = TERRAIN_SIZE.0 * TERRAIN_SIZE.1;
+const DIVISOR: f32 = 343.;
 
 pub struct Worldgen {
-    perlin: Arc<Perlin>,
-    handles: Vec<JoinHandle<Tile>>,
+    perlin: Perlin,
+    terrain: [Terrain; TERRAIN_LEN],
 }
 
 impl Worldgen {
@@ -21,28 +17,31 @@ impl Worldgen {
         perlin.set_seed(1);
 
         Worldgen {
-            perlin: Arc::new(perlin),
-            handles: Vec::new(),
+            perlin,
+            terrain: [Terrain::Undetermined; TERRAIN_LEN],
         }
     }
 
-    pub fn begin(&mut self) {
-        for x in 0..TILES_ROW {
-            for y in 0..TILES_ROW {
-                let noise_module = self.perlin.clone();
+    pub fn terrain(&self) -> &[Terrain] {
+        &self.terrain
+    }
 
-                self.handles.push(thread::spawn(move || {
-                    Tile::new((x as f32, y as f32), noise_module)
-                }));
+    pub fn generate_all(&mut self) {
+        for x in 0..TERRAIN_SIZE.0 {
+            for y in 0..TERRAIN_SIZE.1 {
+                let pixel = &mut self.terrain[Self::index(x, y)];
+                let (x, y) = (x as f32 / DIVISOR, y as f32 / DIVISOR);
+
+                *pixel = if self.perlin.get([x, y]) > 0.2 {
+                    Terrain::DesertSand
+                } else {
+                    Terrain::TallGrass
+                };
             }
         }
     }
 
-    pub fn wait_for_next(&mut self) -> Option<Tile> {
-        if let Some(handle) = self.handles.pop() {
-            Some(handle.join().expect("Thread join failed"))
-        } else {
-            None
-        }
+    pub fn index(x: usize, y: usize) -> usize {
+        x * TERRAIN_SIZE.1 + y
     }
 }
